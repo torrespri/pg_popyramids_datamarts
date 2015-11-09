@@ -1,0 +1,39 @@
+{
+   "name": "pg_popyramids_datamarts",
+   "abstract": "A PostgreSQL extension for creating a data marts schema in the popyramids database",
+   "description": "This library contains a single PostgreSQL extension, which creates a data marts structure in a new schema. It requires an pre-existing Operational Data Store (ODS).",
+   "version": "0.1.0",
+   "maintainer": [
+      "Benito M. Zaragozí <benizar@gmail.com>"
+   ],
+   "license": "GPL3",
+   "provides": {
+      "pair": {
+         "abstract": "A PostgreSQL extension for creating a data marts schema in the popyramids database",
+         "file": "sql/pg_popyramids_datamarts.sql",
+         "docfile": "doc/pg_popyramids_datamarts.md",
+         "version": "0.1.0"
+      }
+   },
+   "resources": {
+      "bugtracker": {
+         "web": "https://github.com/chichinabo/pg_popyramids_datamarts/issues"
+      },
+      "repository": {
+        "url":  "git://github.com/chichinabo/pg_popyramids_datamarts.git",
+        "web":  "https://github.com/chichinabo/pg_popyramids_datamarts",
+        "type": "git"
+      }
+   },
+   "generated_by": "Benito M. Zaragozí",
+   "meta-spec": {
+      "version": "1.0.0",
+      "url": "http://pgxn.org/meta/spec.txt"
+   },
+   "tags": [
+      "population pyramids",
+      "charts",
+      "statistics",
+      "geojson"
+   ]
+}
