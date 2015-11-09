@@ -3,3 +3,4 @@ comment = 'A semantic version data type'
 default_version = '0.1.0'
 requires  = postgis
 relocatable = false
+schema = dms
