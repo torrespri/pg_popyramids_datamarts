@@ -1,0 +1,843 @@
+﻿CREATE TYPE dms.pyrages AS ENUM
+   ('Raw data',
+    '5 years',
+    '10 years',
+    'Big groups');﻿CREATE TYPE dms.pyrfloat AS
+   (what_age int4range[],
+    what_xy double precision[],
+    what_xx double precision[]);﻿CREATE TYPE dms.pyrint AS
+   (what_age int4range[],
+    what_xy integer[],
+    what_xx integer[]);﻿CREATE TYPE dms.pyrshapes AS ENUM
+   ('bell',
+    'bell_women_assymetric',
+    'bell_men_assymetric',
+    'pyramid',
+    'pyramid_women_assymetric',
+    'pyramid_men_assymetric',
+    'star',
+    'star_women_assymetric',
+    'star_men_assymetric',
+    'tornado',
+    'tornado_women_assymetric',
+    'tornado_men_assymetric',
+    'other');﻿CREATE TYPE dms.pyrvars AS ENUM
+   ('Population');﻿CREATE OR REPLACE FUNCTION dms.array_intersect(anyarray, anyarray)
+  RETURNS anyarray AS
+$BODY$
+  SELECT ARRAY(SELECT unnest($1) 
+               INTERSECT 
+               SELECT unnest($2))
+$BODY$
+  LANGUAGE sql VOLATILE﻿CREATE OR REPLACE FUNCTION dms.array_percentages(pop_array double precision[], total_pop bigint)
+  RETURNS double precision[] AS
+$BODY$
+DECLARE
+  result_array float[];
+
+--temp variables
+  tempi integer := 0;
+  tempercent float :=0;
+  x float;
+
+BEGIN
+  FOREACH x IN ARRAY pop_array
+  LOOP
+    tempercent:=(x*100)/total_pop::float;
+
+    result_array[tempi] := tempercent;
+    tempi:=tempi+1;
+
+  END LOOP;
+  RETURN result_array;
+END;
+$BODY$
+  LANGUAGE plpgsql IMMUTABLE STRICT﻿CREATE OR REPLACE FUNCTION dms.array_percentages(pop_array integer[], total_pop bigint)
+  RETURNS double precision[] AS
+$BODY$
+DECLARE
+  result_array float[];
+
+--temp variables
+  tempi integer := 0;
+  tempercent float :=0;
+  x integer;
+
+BEGIN
+  FOREACH x IN ARRAY pop_array
+  LOOP
+    tempercent:=(x*100)/total_pop::float;
+
+    result_array[tempi] := tempercent;
+    tempi:=tempi+1;
+
+  END LOOP;
+  RETURN result_array;
+END;
+$BODY$
+  LANGUAGE plpgsql IMMUTABLE STRICT﻿CREATE OR REPLACE FUNCTION dms.array_reverse(anyarray)
+  RETURNS anyarray AS
+$BODY$
+SELECT ARRAY(
+    SELECT $1[i]
+    FROM generate_subscripts($1,1) AS s(i)
+    ORDER BY i DESC
+);
+$BODY$
+  LANGUAGE sql IMMUTABLE STRICT﻿CREATE OR REPLACE FUNCTION dms.array_sort(anyarray)
+  RETURNS anyarray AS
+$BODY$
+  SELECT ARRAY(SELECT unnest($1) ORDER BY 1)
+$BODY$
+  LANGUAGE sql VOLATILE﻿CREATE OR REPLACE FUNCTION dms.array_subtraction(anyarray, anyarray)
+  RETURNS anyarray AS
+$BODY$
+  SELECT ARRAY(SELECT unnest($1) 
+               EXCEPT 
+               SELECT unnest($2))
+$BODY$
+  LANGUAGE sql VOLATILE﻿CREATE OR REPLACE FUNCTION dms.chibo_give_me_pids(provider_short text, project_short text, north numeric, east numeric, south numeric, west numeric, date_from date, date_to date, maxpids integer)
+  RETURNS integer[] AS
+$BODY$
+SELECT array_agg(pid) FROM (SELECT pid
+FROM dms.main
+WHERE whose_provider_short=provider_short AND what_project_short=project_short AND ST_CoveredBy(where_boundary, ST_setSRID(ST_MakeEnvelope(west, south,east, north),4326)) AND when_reference BETWEEN date_from AND date_to
+ORDER BY what_total_pop desc
+Limit maxpids) AS pids;
+$BODY$
+  LANGUAGE sql VOLATILE﻿CREATE OR REPLACE FUNCTION dms.chibo_give_me_pyramids(pids integer[])
+  RETURNS text AS
+$BODY$
+SELECT row_to_json(fc)::text FROM ( 
+SELECT 'FeatureCollection' As type, array_to_json(array_agg(row_to_json)) As features
+ FROM dms.data_raw WHERE pid IN (SELECT(unnest(pids))))  As fc;
+$BODY$
+  LANGUAGE sql VOLATILE﻿CREATE OR REPLACE FUNCTION dms.chibo_give_me_pyramids(pids integer[], age_groups dms.pyrages, percentages boolean)
+  RETURNS text AS
+$BODY$
+DECLARE
+  result text;
+BEGIN
+
+IF age_groups = 'Raw data' AND percentages = false THEN
+    EXECUTE format('SELECT row_to_json(fc)::text FROM ( 
+SELECT %L As type, array_to_json(array_agg(row_to_json)) As features
+ FROM dms.data_raw WHERE pid IN (SELECT(unnest($1))))  As fc;','FeatureCollection') USING pids INTO result;
+
+ELSIF age_groups = 'Raw data' AND percentages = true THEN
+    EXECUTE format('SELECT row_to_json(fc)::text FROM ( 
+SELECT %L As type, array_to_json(array_agg(row_to_json)) As features
+ FROM dms.data_raw_percentages WHERE pid IN (SELECT(unnest($1))))  As fc;','FeatureCollection') USING pids INTO result;
+
+ELSIF age_groups = '5 years' AND percentages = false THEN
+    EXECUTE format('SELECT row_to_json(fc)::text FROM ( 
+SELECT %L As type, array_to_json(array_agg(row_to_json)) As features
+ FROM dms.data_five_years WHERE pid IN (SELECT(unnest($1))))  As fc;','FeatureCollection') USING pids INTO result;
+
+ELSIF age_groups = '5 years' AND percentages = true THEN
+    EXECUTE format('SELECT row_to_json(fc)::text FROM ( 
+SELECT %L As type, array_to_json(array_agg(row_to_json)) As features
+ FROM dms.data_five_years_percentages WHERE pid IN (SELECT(unnest($1))))  As fc;','FeatureCollection') USING pids INTO result;
+
+ELSIF age_groups = '10 years' AND percentages = false THEN
+    EXECUTE format('SELECT row_to_json(fc)::text FROM ( 
+SELECT %L As type, array_to_json(array_agg(row_to_json)) As features
+ FROM dms.data_ten_years WHERE pid IN (SELECT(unnest($1))))  As fc;','FeatureCollection') USING pids INTO result;
+
+ELSIF age_groups = '10 years' AND percentages = true THEN
+    EXECUTE format('SELECT row_to_json(fc)::text FROM ( 
+SELECT %L As type, array_to_json(array_agg(row_to_json)) As features
+ FROM dms.data_ten_years_percentages WHERE pid IN (SELECT(unnest($1))))  As fc;','FeatureCollection') USING pids INTO result;
+
+ELSIF age_groups = 'Big groups' AND percentages = false THEN
+    EXECUTE format('SELECT row_to_json(fc)::text FROM ( 
+SELECT %L As type, array_to_json(array_agg(row_to_json)) As features
+ FROM dms.data_big_groups WHERE pid IN (SELECT(unnest($1))))  As fc;','FeatureCollection') USING pids INTO result;
+
+ELSIF age_groups = 'Big groups' AND percentages = true THEN
+    EXECUTE format('SELECT row_to_json(fc)::text FROM ( 
+SELECT %L As type, array_to_json(array_agg(row_to_json)) As features
+ FROM dms.data_big_groups_percentages WHERE pid IN (SELECT(unnest($1))))  As fc;','FeatureCollection') USING pids INTO result;
+
+END IF;
+
+  RETURN result;
+
+END;
+$BODY$
+  LANGUAGE plpgsql VOLATILE﻿CREATE OR REPLACE FUNCTION dms.pyrintarray_bucketing(raw_data dms.pyrint[], age_groups dms.pyrages)
+  RETURNS dms.pyrint[] AS
+$BODY$
+DECLARE
+
+  result dms.pyrint[];
+--temp variables
+  tempi integer := 1;
+  x dms.pyrint;
+
+BEGIN
+
+  FOREACH x IN ARRAY raw_data
+  LOOP
+
+    result[tempi] := dms.pyrint_bucketing(x,age_groups);
+    tempi:=tempi+1;
+
+  END LOOP;
+
+  RETURN result;
+END;
+$BODY$
+  LANGUAGE plpgsql IMMUTABLE STRICT﻿CREATE OR REPLACE FUNCTION dms.pyrintarray_ods_to_dms(raw_data ods.pyrint[])
+  RETURNS dms.pyrint[] AS
+$BODY$
+DECLARE
+
+  result dms.pyrint[];
+--temp variables
+  tempi integer := 1;
+  x dms.pyrint;
+
+BEGIN
+
+  FOREACH x IN ARRAY raw_data
+  LOOP
+
+    result[tempi] := dms.pyrint_ods_to_dms(x);
+    tempi:=tempi+1;
+
+  END LOOP;
+
+  RETURN result;
+END;
+$BODY$
+  LANGUAGE plpgsql IMMUTABLE STRICT﻿CREATE OR REPLACE FUNCTION dms.pyrintarray_percentages(raw_data dms.pyrint[])
+  RETURNS dms.pyrfloat[] AS
+$BODY$
+DECLARE
+
+  result dms.pyrfloat[];
+--temp variables
+  tempi integer := 1;
+  x dms.pyrint;
+
+BEGIN
+
+  FOREACH x IN ARRAY raw_data
+  LOOP
+
+    result[tempi] := dms.pyrint_percentages(x);
+    tempi:=tempi+1;
+
+  END LOOP;
+
+  RETURN result;
+END;
+$BODY$
+  LANGUAGE plpgsql IMMUTABLE STRICT﻿CREATE OR REPLACE FUNCTION dms.pyrintarray_total_pop(raw_data dms.pyrint[])
+  RETURNS bigint[] AS
+$BODY$
+DECLARE
+
+  result bigint[];
+--temp variables
+  tempi integer := 1;
+  x dms.pyrint;
+
+BEGIN
+
+  FOREACH x IN ARRAY raw_data
+  LOOP
+
+    result[tempi] := dms.pyrint_total_pop(x);
+    tempi:=tempi+1;
+
+  END LOOP;
+
+  RETURN result;
+END;
+$BODY$
+  LANGUAGE plpgsql IMMUTABLE STRICT﻿CREATE OR REPLACE FUNCTION dms.pyrint_bucketing(raw_data dms.pyrint, age_groups dms.pyrages)
+  RETURNS dms.pyrint AS
+$BODY$
+DECLARE
+
+  total_pop bigint;
+  result dms.pyrint;
+
+BEGIN
+
+result.what_age:=raw_data.what_age;
+result.what_xy:=raw_data.what_xy;
+result.what_xx:=raw_data.what_xx;
+
+total_pop:=dms.pyrint_total_pop(raw_data);
+
+IF age_groups = 'Raw data' THEN
+    result.what_age:=raw_data.what_age;
+    result.what_xy:=raw_data.what_xy;
+    result.what_xx:=raw_data.what_xx;
+ELSIF age_groups = '5 years' THEN
+    result.what_age:=dms.array_bucketing(result.what_age,20);
+    result.what_xy:=dms.array_bucketing(result.what_xy,20);
+    result.what_xx:=dms.array_bucketing(result.what_xx,20);
+ELSIF age_groups = '10 years' THEN
+    result.what_age:=dms.array_bucketing(result.what_age,10);
+    result.what_xy:=dms.array_bucketing(result.what_xy,10);
+    result.what_xx:=dms.array_bucketing(result.what_xx,10);
+ELSIF age_groups = 'Big groups' THEN
+    result.what_age:=dms.array_bucketing(result.what_age,3);
+    result.what_xy:=dms.array_bucketing(result.what_xy,3);
+    result.what_xx:=dms.array_bucketing(result.what_xx,3);
+END IF;
+
+  RETURN result;
+END;
+$BODY$
+  LANGUAGE plpgsql VOLATILE﻿CREATE OR REPLACE FUNCTION dms.pyrint_geom(raw_data dms.pyrint)
+  RETURNS geometry AS
+$BODY$
+DECLARE
+
+  percentages dms.pyrfloat;
+  result geometry;
+--temp variables
+  coordstep integer:=0;
+  tempi integer := 0;
+  y numeric;
+  x numeric;
+  geom text:='LINESTRING(';
+
+BEGIN
+
+percentages:=dms.pyrint_percentages(dms.pyrint_bucketing(raw_data, 'Big groups'::dms.pyrages));
+
+  coordstep:= round(100/array_length(percentages.what_xy,1));
+  tempi:=coordstep;
+
+
+  FOREACH y IN ARRAY percentages.what_xy
+  LOOP
+
+    geom:=geom|| '-' || y || ' ' ||tempi ||',';
+    
+    tempi:=tempi+coordstep;
+
+  END LOOP;
+
+  --Add an aditional vertex for visual appeal
+  --geom := geom||'0 100,';
+
+
+  FOREACH x IN ARRAY dms.array_reverse(percentages.what_xx)
+  LOOP
+
+    tempi:=tempi-coordstep;
+
+    geom:=geom||  x ||' '||tempi ||',';
+    
+    
+
+  END LOOP;
+
+  --Add an aditional vertex for visual appeal
+  geom:=regexp_replace(geom, ',$', '');
+  geom := geom||')';
+
+  result:=st_geomfromtext(geom,4326);
+
+  RETURN result;
+END;
+$BODY$
+  LANGUAGE plpgsql VOLATILE﻿CREATE OR REPLACE FUNCTION dms.pyrint_ods_to_dms(raw_data ods.pyrint)
+  RETURNS dms.pyrint AS
+$BODY$
+DECLARE
+
+  result dms.pyrint;
+
+BEGIN
+
+result.what_age:=raw_data.what_age;
+result.what_xy:=raw_data.what_xy;
+result.what_xx:=raw_data.what_xx;
+
+  RETURN result;
+END;
+$BODY$
+  LANGUAGE plpgsql VOLATILE﻿CREATE OR REPLACE FUNCTION dms.pyrint_percentages(raw_data dms.pyrint)
+  RETURNS dms.pyrfloat AS
+$BODY$
+DECLARE
+
+  total_pop bigint;
+  result dms.pyrfloat;
+
+--temp variables
+  tempi integer := 1;
+  tempercent float :=0;
+  y integer;
+  x integer;
+
+BEGIN
+
+result.what_age:=raw_data.what_age;
+result.what_xy:=raw_data.what_xy;
+result.what_xx:=raw_data.what_xx;
+
+total_pop:=dms.pyrint_total_pop(raw_data);
+
+
+  FOREACH y IN ARRAY result.what_xy
+  LOOP
+    tempercent:=(y*100)/total_pop::float;
+
+    result.what_xy[tempi] := tempercent;
+    tempi:=tempi+1;
+
+  END LOOP;
+
+
+  tempi := 1;
+  FOREACH x IN ARRAY result.what_xx
+  LOOP
+    tempercent:=(x*100)/total_pop::float;
+
+    result.what_xx[tempi] := tempercent;
+    tempi:=tempi+1;
+
+  END LOOP;
+
+  RETURN result;
+END;
+$BODY$
+  LANGUAGE plpgsql IMMUTABLE STRICT﻿CREATE OR REPLACE FUNCTION dms.pyrint_shape(raw_data dms.pyrint)
+  RETURNS dms.pyrshapes AS
+$BODY$
+DECLARE
+
+  shape geometry;
+  --Predefined shapes 
+  pyramid geometry;
+  tornado geometry;
+  star geometry;
+  bell geometry;
+
+  tempshape dms.pyrshapes;
+  tempdistance double precision;
+  result dms.pyrshapes;
+
+BEGIN
+
+  shape:=dms.pyrint_geom(raw_data);
+
+  pyramid:=st_geomfromtext('LINESTRING(-30 33,-15 66,-5 99,5 99,15 66,30 33)');
+  tornado:=st_geomfromtext('LINESTRING(-5 33,-15 66,-30 99,30 99,15 66,5 33)');
+  star:=st_geomfromtext('LINESTRING(-12.5 33,-25 66,-12.5 99,12.5 99,25 66,12.5 33)');
+  bell:=st_geomfromtext('LINESTRING(-20 33,-20 66,-10 99,10 99,20 66,20 33)');
+
+  --Start by comparing a pyramid shape
+  tempdistance:= st_hausdorffdistance(shape,pyramid);
+  tempshape:='pyramid'::dms.pyrshapes;
+  
+CASE
+    WHEN st_hausdorffdistance(shape,tornado) < tempdistance THEN
+      tempdistance:= st_hausdorffdistance(shape,tornado);
+      tempshape:='tornado'::dms.pyrshapes;
+    WHEN st_hausdorffdistance(shape,star) < tempdistance THEN
+      tempdistance:= st_hausdorffdistance(shape,star);
+      tempshape:='star'::dms.pyrshapes;
+    WHEN st_hausdorffdistance(shape,bell) < tempdistance THEN
+      tempdistance:= st_hausdorffdistance(shape,bell);
+      tempshape:='bell'::dms.pyrshapes;
+    ELSE
+      tempshape:='other'::dms.pyrshapes;
+        
+END CASE;
+
+
+  result:=tempshape;
+
+  RETURN result;
+
+END;
+$BODY$
+  LANGUAGE plpgsql VOLATILE﻿CREATE OR REPLACE FUNCTION dms.pyrint_total_pop(dms.pyrint)
+  RETURNS bigint AS
+$BODY$
+DECLARE
+  pop_arr integer[]:= $1.what_xy||$1.what_xx;
+  s bigint := 0;
+  x integer;
+BEGIN
+  FOREACH x IN ARRAY pop_arr
+  LOOP
+    s := s + x;
+  END LOOP;
+  RETURN s;
+END;
+$BODY$
+  LANGUAGE plpgsql VOLATILE﻿CREATE OR REPLACE FUNCTION dms.pyrint_xx_pop(dms.pyrint)
+  RETURNS bigint AS
+$BODY$
+DECLARE
+  xx_arr integer[]:= $1.what_xx;
+  s bigint := 0;
+  x integer;
+BEGIN
+  FOREACH x IN ARRAY xx_arr
+  LOOP
+    s := s + x;
+  END LOOP;
+  RETURN s;
+END;
+$BODY$
+  LANGUAGE plpgsql VOLATILE﻿CREATE OR REPLACE FUNCTION dms.pyrint_xy_pop(dms.pyrint)
+  RETURNS bigint AS
+$BODY$
+DECLARE
+  xy_arr integer[]:= $1.what_xy;
+  s bigint := 0;
+  x integer;
+BEGIN
+  FOREACH x IN ARRAY xy_arr
+  LOOP
+    s := s + x;
+  END LOOP;
+  RETURN s;
+END;
+$BODY$
+  LANGUAGE plpgsql VOLATILE﻿CREATE CAST (ods.pyrint AS dms.pyrint) 
+WITH FUNCTION dms.pyrint_ods_to_dms(ods.pyrint);
+﻿CREATE CAST (dms.pyrint AS dms.pyrshapes)
+  WITH FUNCTION dms.pyrint_shape(dms.pyrint);﻿--This materialized view is an entry point for the data marts schema
+CREATE MATERIALIZED VIEW dms.main AS 
+ SELECT main.pid,
+    main.who_uploaded,
+    main.what_project,
+    main.what_project_short,
+    main.what_variables,
+    main.what_data::dms.pyrint[] AS what_data, --CAST DATA TO THIS SCHEMA
+    main.where_geoname,
+    main.where_centroid,
+    main.where_boundary,
+    main.when_reference,
+    main.when_accessed,
+    main.whose_provider,
+    main.whose_provider_short,
+    main.whose_url,
+
+--CALCULATIONS
+    dms.pyrintarray_total_pop(what_data::dms.pyrint[]) AS what_total_pop,
+    what_data[1]::dms.pyrint::dms.pyrshapes AS what_shape,
+
+--STYLES
+    ('<font size=1>'
+    '<table>'
+    '<tr bgcolor="#CED8F6"><td><b>pid: </b></td><td>'||pid||'</td></tr>'
+    '<tr bgcolor="#FFFFFF"><td><b>where_geoname: </b></td><td>'||where_geoname||'</td></tr>'
+    '<tr bgcolor="#CED8F6"><td><b>when_reference: </b></td><td>'||when_reference||'</td></tr>'
+    '<tr bgcolor="#FFFFFF"><td><b>what_project: </b></td><td>'||what_project||'</td></tr>'
+    '<tr bgcolor="#CED8F6"><td><b>whose_provider: </b></td><td>'||whose_provider||'</td></tr>'
+    '<tr bgcolor="#FFFFFF"><td><b>whose_url: </b></td><td>'||whose_url||'</td></tr>'
+    '<tr bgcolor="#CED8F6"><td><b>when_accessed: </b></td><td>'||when_accessed||'</td></tr>'
+    '<tr bgcolor="#FFFFFF"><td><b>who_uploaded: </b></td><td>'||who_uploaded||'</td></tr>'
+    '</table>'
+    '</font>'::text) AS how_popup_html_long,
+
+    '{"stroke":true,'
+    '"smoothFactor":0.2,'
+    '"opacity":1,'
+    '"fillOpacity":0.8,'
+    '"fillColor":"'||
+
+    CASE
+      WHEN what_data[1]::dms.pyrint::dms.pyrshapes = 'pyramid'::dms.pyrshapes THEN '#ffff99'
+      WHEN what_data[1]::dms.pyrint::dms.pyrshapes = 'tornado'::dms.pyrshapes THEN '#386cb0'
+      WHEN what_data[1]::dms.pyrint::dms.pyrshapes = 'star'::dms.pyrshapes THEN '#fdc086'
+      WHEN what_data[1]::dms.pyrint::dms.pyrshapes = 'bell'::dms.pyrshapes THEN '#7fc97f'
+      ELSE '#beaed4'
+    END
+
+||'",'
+    '"weight":1,'
+    '"color":"black"}'::text AS how_boundary_style
+   FROM ods.main
+WITH DATA;
+﻿-- Materialized View: dms.data_big_groups_percentages
+
+--DROP MATERIALIZED VIEW dms.data_big_groups_percentages;
+
+CREATE MATERIALIZED VIEW dms.data_big_groups_percentages AS 
+ SELECT (row_to_json(f.*) #>> '{properties,pid}'::text[])::bigint AS pid,
+    row_to_json(f.*) AS row_to_json
+   FROM ( SELECT 'Feature' AS type,
+            st_asgeojson(st_collect(ARRAY[lg.where_boundary, lg.where_centroid]), 4)::json AS geometry,
+            row_to_json(( SELECT l.*::record AS l
+                   FROM ( SELECT lg.pid,
+                            lg.who_uploaded,
+                            lg.what_project,
+                            lg.what_variables,
+                            dms.pyrintarray_percentages(dms.pyrintarray_bucketing(lg.what_data, 'Big groups'::dms.pyrages)) AS what_data,
+                            lg.what_total_pop,
+                            lg.what_shape,
+                            lg.where_geoname,
+                            lg.when_reference,
+                            lg.when_accessed,
+                            lg.whose_provider,
+                            lg.whose_url,
+                            lg.how_popup_html_long) l)) AS properties,
+            lg.how_boundary_style::json AS style
+           FROM dms.main lg) f
+  ORDER BY (row_to_json(f.*) #>> '{properties,pid}'::text[])::bigint
+WITH DATA;
+﻿-- Materialized View: dms.data_big_groups
+
+--DROP MATERIALIZED VIEW dms.data_big_groups;
+
+CREATE MATERIALIZED VIEW dms.data_big_groups AS 
+ SELECT (row_to_json(f.*) #>> '{properties,pid}'::text[])::bigint AS pid,
+    row_to_json(f.*) AS row_to_json
+   FROM ( SELECT 'Feature' AS type,
+            st_asgeojson(st_collect(ARRAY[lg.where_boundary, lg.where_centroid]), 4)::json AS geometry,
+            row_to_json(( SELECT l.*::record AS l
+                   FROM ( SELECT lg.pid,
+                            lg.who_uploaded,
+                            lg.what_project,
+                            lg.what_variables,
+                            dms.pyrintarray_bucketing(lg.what_data, 'Big groups'::dms.pyrages) AS what_data,
+                            lg.what_total_pop,
+                            lg.what_shape,
+                            lg.where_geoname,
+                            lg.when_reference,
+                            lg.when_accessed,
+                            lg.whose_provider,
+                            lg.whose_url,
+                            lg.how_popup_html_long) l)) AS properties,
+            lg.how_boundary_style::json AS style
+           FROM dms.main lg) f
+  ORDER BY (row_to_json(f.*) #>> '{properties,pid}'::text[])::bigint
+WITH DATA;
+﻿-- Materialized View: dms.data_five_years_percentages
+
+--DROP MATERIALIZED VIEW dms.data_five_years_percentages;
+
+CREATE MATERIALIZED VIEW dms.data_five_years_percentages AS 
+ SELECT (row_to_json(f.*) #>> '{properties,pid}'::text[])::bigint AS pid,
+    row_to_json(f.*) AS row_to_json
+   FROM ( SELECT 'Feature' AS type,
+            st_asgeojson(st_collect(ARRAY[lg.where_boundary, lg.where_centroid]), 4)::json AS geometry,
+            row_to_json(( SELECT l.*::record AS l
+                   FROM ( SELECT lg.pid,
+                            lg.who_uploaded,
+                            lg.what_project,
+                            lg.what_variables,
+                            dms.pyrintarray_percentages(dms.pyrintarray_bucketing(lg.what_data, '5 years'::dms.pyrages)) AS what_data,
+                            lg.what_total_pop,
+                            lg.what_shape,
+                            lg.where_geoname,
+                            lg.when_reference,
+                            lg.when_accessed,
+                            lg.whose_provider,
+                            lg.whose_url,
+                            lg.how_popup_html_long) l)) AS properties,
+            lg.how_boundary_style::json AS style
+           FROM dms.main lg) f
+  ORDER BY (row_to_json(f.*) #>> '{properties,pid}'::text[])::bigint
+WITH DATA;
+
+ALTER TABLE dms.data_five_years_percentages
+  OWNER TO postgres;
+GRANT ALL ON TABLE dms.data_five_years_percentages TO postgres;
+GRANT SELECT ON TABLE dms.data_five_years_percentages TO chichinabo;
+﻿-- Materialized View: dms.data_five_years
+
+--DROP MATERIALIZED VIEW dms.data_five_years;
+
+CREATE MATERIALIZED VIEW dms.data_five_years AS 
+ SELECT (row_to_json(f.*) #>> '{properties,pid}'::text[])::bigint AS pid,
+    row_to_json(f.*) AS row_to_json
+   FROM ( SELECT 'Feature' AS type,
+            st_asgeojson(st_collect(ARRAY[lg.where_boundary, lg.where_centroid]), 4)::json AS geometry,
+            row_to_json(( SELECT l.*::record AS l
+                   FROM ( SELECT lg.pid,
+                            lg.who_uploaded,
+                            lg.what_project,
+                            lg.what_variables,
+                            dms.pyrintarray_bucketing(lg.what_data, '5 years'::dms.pyrages) AS what_data,
+                            lg.what_total_pop,
+                            lg.what_shape,
+                            lg.where_geoname,
+                            lg.when_reference,
+                            lg.when_accessed,
+                            lg.whose_provider,
+                            lg.whose_url,
+                            lg.how_popup_html_long) l)) AS properties,
+            lg.how_boundary_style::json AS style
+           FROM dms.main lg) f
+  ORDER BY (row_to_json(f.*) #>> '{properties,pid}'::text[])::bigint
+WITH DATA;
+﻿-- Materialized View: dms.data_raw_percentages
+
+--DROP MATERIALIZED VIEW dms.data_raw_percentages;
+
+CREATE MATERIALIZED VIEW dms.data_raw_percentages AS 
+ SELECT (row_to_json(f.*) #>> '{properties,pid}'::text[])::bigint AS pid,
+    row_to_json(f.*) AS row_to_json
+   FROM ( SELECT 'Feature' AS type,
+            st_asgeojson(st_collect(ARRAY[lg.where_boundary, lg.where_centroid]), 4)::json AS geometry,
+            row_to_json(( SELECT l.*::record AS l
+                   FROM ( SELECT lg.pid,
+                            lg.who_uploaded,
+                            lg.what_project,
+                            lg.what_variables,
+                            dms.pyrintarray_percentages(lg.what_data) AS what_data,
+                            lg.what_total_pop,
+                            lg.what_shape,
+                            lg.where_geoname,
+                            lg.when_reference,
+                            lg.when_accessed,
+                            lg.whose_provider,
+                            lg.whose_url,
+                            lg.how_popup_html_long) l)) AS properties,
+            lg.how_boundary_style::json AS style
+           FROM dms.main lg) f
+  ORDER BY (row_to_json(f.*) #>> '{properties,pid}'::text[])::bigint
+WITH DATA;
+﻿-- Materialized View: dms.data_raw
+
+--DROP MATERIALIZED VIEW dms.data_raw;
+
+CREATE MATERIALIZED VIEW dms.data_raw AS 
+ SELECT (row_to_json(f.*) #>> '{properties,pid}'::text[])::bigint AS pid,
+    row_to_json(f.*) AS row_to_json
+   FROM ( SELECT 'Feature' AS type,
+            st_asgeojson(st_collect(ARRAY[lg.where_boundary, lg.where_centroid]), 4)::json AS geometry,
+            row_to_json(( SELECT l.*::record AS l
+                   FROM ( SELECT lg.pid,
+                            lg.who_uploaded,
+                            lg.what_project,
+                            lg.what_variables,
+                            lg.what_data,
+                            lg.what_total_pop,
+                            lg.what_shape,
+                            lg.where_geoname,
+                            lg.when_reference,
+                            lg.when_accessed,
+                            lg.whose_provider,
+                            lg.whose_url,
+                            lg.how_popup_html_long) l)) AS properties,
+            lg.how_boundary_style::json AS style
+           FROM dms.main lg) f
+  ORDER BY (row_to_json(f.*) #>> '{properties,pid}'::text[])::bigint
+WITH DATA;
+﻿-- Materialized View: dms.data_ten_years_percentages
+
+--DROP MATERIALIZED VIEW dms.data_ten_years_percentages;
+
+CREATE MATERIALIZED VIEW dms.data_ten_years_percentages AS 
+ SELECT (row_to_json(f.*) #>> '{properties,pid}'::text[])::bigint AS pid,
+    row_to_json(f.*) AS row_to_json
+   FROM ( SELECT 'Feature' AS type,
+            st_asgeojson(st_collect(ARRAY[lg.where_boundary, lg.where_centroid]), 4)::json AS geometry,
+            row_to_json(( SELECT l.*::record AS l
+                   FROM ( SELECT lg.pid,
+                            lg.who_uploaded,
+                            lg.what_project,
+                            lg.what_variables,
+                            dms.pyrintarray_percentages(dms.pyrintarray_bucketing(lg.what_data, '10 years'::dms.pyrages)) AS what_data,
+                            lg.what_total_pop,
+                            lg.what_shape,
+                            lg.where_geoname,
+                            lg.when_reference,
+                            lg.when_accessed,
+                            lg.whose_provider,
+                            lg.whose_url,
+                            lg.how_popup_html_long) l)) AS properties,
+            lg.how_boundary_style::json AS style
+           FROM dms.main lg) f
+  ORDER BY (row_to_json(f.*) #>> '{properties,pid}'::text[])::bigint
+WITH DATA;
+
+ALTER TABLE dms.data_ten_years_percentages
+  OWNER TO postgres;
+GRANT ALL ON TABLE dms.data_ten_years_percentages TO postgres;
+GRANT SELECT ON TABLE dms.data_ten_years_percentages TO chichinabo;
+﻿-- Materialized View: dms.data_ten_years
+
+--DROP MATERIALIZED VIEW dms.data_ten_years;
+
+CREATE MATERIALIZED VIEW dms.data_ten_years AS 
+ SELECT (row_to_json(f.*) #>> '{properties,pid}'::text[])::bigint AS pid,
+    row_to_json(f.*) AS row_to_json
+   FROM ( SELECT 'Feature' AS type,
+            st_asgeojson(st_collect(ARRAY[lg.where_boundary, lg.where_centroid]), 4)::json AS geometry,
+            row_to_json(( SELECT l.*::record AS l
+                   FROM ( SELECT lg.pid,
+                            lg.who_uploaded,
+                            lg.what_project,
+                            lg.what_variables,
+                            dms.pyrintarray_bucketing(lg.what_data, '10 years'::dms.pyrages) AS what_data,
+                            lg.what_total_pop,
+                            lg.what_shape,
+                            lg.where_geoname,
+                            lg.when_reference,
+                            lg.when_accessed,
+                            lg.whose_provider,
+                            lg.whose_url,
+                            lg.how_popup_html_long) l)) AS properties,
+            lg.how_boundary_style::json AS style
+           FROM dms.main lg) f
+  ORDER BY (row_to_json(f.*) #>> '{properties,pid}'::text[])::bigint
+WITH DATA;
+﻿--DROP MATERIALIZED VIEW dms.stats_general;
+
+CREATE MATERIALIZED VIEW dms.stats_general AS 
+ SELECT row_to_json(stats.*)::text AS row_to_json
+   FROM ( SELECT count(s.who_uploaded) AS pyramids_count,
+            count(DISTINCT s.who_uploaded ORDER BY s.who_uploaded) AS who_uploaded,
+            count(DISTINCT s.what_project ORDER BY s.what_project) AS what_project,
+            count(DISTINCT s.when_reference ORDER BY s.when_reference) AS when_reference,
+            count(DISTINCT s.whose_provider ORDER BY s.whose_provider) AS whose_provider
+           FROM ( SELECT main.pid,
+                    main.who_uploaded,
+                    main.what_project,
+                    main.when_reference,
+                    main.whose_provider
+                   FROM dms.main) s) stats
+WITH DATA;﻿-- Materialized View: dms.ui_general_options
+
+--DROP MATERIALIZED VIEW dms.ui_general_options;
+
+CREATE MATERIALIZED VIEW dms.ui_general_options AS 
+ SELECT row_to_json(ui.*)::text AS row_to_json
+   FROM ( SELECT array_agg(DISTINCT s.who_uploaded ORDER BY s.who_uploaded) AS who_uploaded,
+            array_agg(DISTINCT s.what_project ORDER BY s.what_project) AS what_project,
+            array_agg(DISTINCT s.what_project_short ORDER BY s.what_project_short) AS what_project_short,
+            array_agg(DISTINCT s.what_variables) AS what_variables,
+            array_agg(DISTINCT s.when_reference ORDER BY s.when_reference) AS when_reference,
+            array_agg(DISTINCT s.whose_provider ORDER BY s.whose_provider) AS whose_provider,
+            array_agg(DISTINCT s.whose_provider_short ORDER BY s.whose_provider_short) AS whose_provider_short
+           FROM ( SELECT main.pid,
+                    main.who_uploaded,
+                    main.what_project,
+                    main.what_project_short,
+                    unnest(main.what_variables) AS what_variables,
+                    main.when_reference,
+                    main.whose_provider,
+                    main.whose_provider_short
+                   FROM dms.main) s) ui
+WITH DATA;
+﻿-- Materialized View: dms.ui_map_catalog
+
+--DROP MATERIALIZED VIEW dms.ui_map_catalog;
+
+CREATE MATERIALIZED VIEW dms.ui_map_catalog AS 
+ SELECT row_to_json(ui.*)::text AS row_to_json
+   FROM ( SELECT s.whose_provider_short,
+            array_agg(DISTINCT s.what_project_short ORDER BY s.what_project_short) AS what_project_short
+           FROM ( SELECT main.what_project_short,
+                    main.whose_provider_short
+                   FROM dms.main) s
+          GROUP BY s.whose_provider_short) ui
+WITH DATA;
