@@ -1,4 +1,4 @@
-EXTENSION = pg_jobmon
+EXTENSION = pg_popyramids_datamarts
 EXTVERSION = $(shell grep default_version $(EXTENSION).control | \
                sed -e "s/default_version[[:space:]]*=[[:space:]]*'\([^']*\)'/\1/")
                
