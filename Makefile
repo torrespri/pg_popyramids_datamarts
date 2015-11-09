@@ -1,4 +1,3 @@
-MODULES = isbn_issn
 EXTENSION = pg_popyramids_datamarts
 sql/$(EXTENSION)--1.0.0.sql: sql/types/*.sql sql/functions/*.sql sql/casts/*.sql sql/materialized_views/*.sql
 	cat $^ > $@
