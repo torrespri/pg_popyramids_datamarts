@@ -2,7 +2,7 @@
    "name": "pg_popyramids_datamarts",
    "abstract": "A PostgreSQL extension for creating a data marts schema in the popyramids database",
    "description": "This library contains a single PostgreSQL extension, which creates a data marts structure in a new schema. It requires an pre-existing Operational Data Store (ODS).",
-   "version": "0.1.0",
+   "version": "1.0.0",
    "maintainer": [
       "Benito M. Zaragozí <benizar@gmail.com>"
    ],
@@ -12,7 +12,7 @@
          "abstract": "A PostgreSQL extension for creating a data marts schema in the popyramids database",
          "file": "sql/pg_popyramids_datamarts.sql",
          "docfile": "doc/pg_popyramids_datamarts.md",
-         "version": "0.1.0"
+         "version": "1.0.0"
       }
    },
    "resources": {
