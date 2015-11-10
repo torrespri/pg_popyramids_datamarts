@@ -1,0 +1,28 @@
+
+/*
+ *  Add comments
+ */
+CREATE OR REPLACE FUNCTION @extschema@.pyrintarray_bucketing(raw_data @extschema@.pyrint[], age_groups @extschema@.pyrages)
+  RETURNS @extschema@.pyrint[] AS
+$BODY$
+DECLARE
+
+  result @extschema@.pyrint[];
+--temp variables
+  tempi integer := 1;
+  x @extschema@.pyrint;
+
+BEGIN
+
+  FOREACH x IN ARRAY raw_data
+  LOOP
+
+    result[tempi] := @extschema@.pyrint_bucketing(x,age_groups);
+    tempi:=tempi+1;
+
+  END LOOP;
+
+  RETURN result;
+END;
+$BODY$
+  LANGUAGE plpgsql IMMUTABLE STRICT;
